@@ -2,7 +2,11 @@ package com.xcarriermaterialdesign
 
 import android.Manifest
 import android.app.AlertDialog
-import android.content.*
+import android.content.ContentValues
+import android.content.Context
+import android.content.DialogInterface
+import android.content.Intent
+import android.content.IntentSender
 import android.content.IntentSender.SendIntentException
 import android.content.pm.PackageManager
 import android.location.Location
@@ -22,26 +26,31 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentManager
+import androidx.lifecycle.Observer
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.findNavController
 import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.setupActionBarWithNavController
 import androidx.navigation.ui.setupWithNavController
-import com.google.android.gms.common.api.*
-import com.google.android.gms.location.*
+import androidx.room.Room
+import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.common.api.GoogleApiClient
+import com.google.android.gms.common.api.PendingResult
+import com.google.android.gms.common.api.Status
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.LocationSettingsRequest
+import com.google.android.gms.location.LocationSettingsResult
+import com.google.android.gms.location.LocationSettingsStatusCodes
+import com.google.android.gms.location.SettingsClient
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.xcarriermaterialdesign.activities.dashboard.DashboardViewModel
-import com.xcarriermaterialdesign.databinding.ActivityBottomNavigationBinding
-import com.xcarriermaterialdesign.model.ConfigRequest
-import com.xcarriermaterialdesign.model.ConfigResponse
-import com.xcarriermaterialdesign.utils.AnalyticsApplication
-import com.xcarriermaterialdesign.utils.ApplicationSharedPref
-import com.xcarriermaterialdesign.utils.LoadingView
-import com.xcarriermaterialdesign.utils.ServiceDialog
-import java.util.*
-import androidx.lifecycle.Observer
-import androidx.lifecycle.lifecycleScope
-import androidx.room.Room
 import com.xcarriermaterialdesign.activities.settings.SettingsActivity
+import com.xcarriermaterialdesign.databinding.ActivityBottomNavigationBinding
 import com.xcarriermaterialdesign.dbmodel.CarrierDao
 import com.xcarriermaterialdesign.dbmodel.CarrierPackage
 import com.xcarriermaterialdesign.dbmodel.LocationDao
@@ -52,12 +61,29 @@ import com.xcarriermaterialdesign.dbmodel.StatusDao
 import com.xcarriermaterialdesign.dbmodel.StatusPackage
 import com.xcarriermaterialdesign.dbmodel.StorageLocationDao
 import com.xcarriermaterialdesign.dbmodel.StorageLocationPackage
+import com.xcarriermaterialdesign.model.ConfigRequest
+import com.xcarriermaterialdesign.model.ConfigResponse
 import com.xcarriermaterialdesign.model.Reason
 import com.xcarriermaterialdesign.model.Statuse
 import com.xcarriermaterialdesign.model.StorageLocation
+import com.xcarriermaterialdesign.roomdatabase.BulkDao
+import com.xcarriermaterialdesign.roomdatabase.CamerDao
 import com.xcarriermaterialdesign.roomdatabase.ProcessDatabase
+import com.xcarriermaterialdesign.ui.dashboard.DashboardFragment
+import com.xcarriermaterialdesign.ui.home.HomeFragment
+import com.xcarriermaterialdesign.ui.notifications.NotificationsFragment
+import com.xcarriermaterialdesign.utils.ApplicationSharedPref
+import com.xcarriermaterialdesign.utils.DWUtilities
+import com.xcarriermaterialdesign.utils.LoadingView
+import com.xcarriermaterialdesign.utils.ServiceDialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.IOException
+import java.io.InputStream
+import java.io.InputStreamReader
 
 
 class BottomNavigationActivity : AppCompatActivity() {
@@ -85,8 +111,11 @@ class BottomNavigationActivity : AppCompatActivity() {
     private lateinit var reasonDao: ReasonDao
     private lateinit var storageLocationDao: StorageLocationDao
     private lateinit var locationDao: LocationDao
+    private lateinit var camerDao: CamerDao
+    private lateinit var bulkDao: BulkDao
 
 
+    var decodedData:String = ""
 
 
 
@@ -95,10 +124,17 @@ class BottomNavigationActivity : AppCompatActivity() {
         Manifest.permission.CAMERA
     )
 
+    val firstTimeUse = false;
+
+
+    override fun onBackPressed() {
+
+        moveTaskToBack(true)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        AnalyticsApplication.instance!!.setLocaleFa(this)
+    //    AnalyticsApplication.instance!!.setLocaleFa(this)
 
        // startService(Intent(applicationContext, NetWorkService::class.java))
 
@@ -109,14 +145,14 @@ class BottomNavigationActivity : AppCompatActivity() {
 
         model.config(this)
 
-
-        AnalyticsApplication.instance?.setPlantId("")
-
+        DWUtilities.CreateDWProfile(this, resources.getString(R.string.activity_intent_filter_action2),"true")
 
 
+        ApplicationSharedPref.write(ApplicationSharedPref.DEVICE, Build.MODEL)
 
+        //Toast.makeText(this, Build.MODEL, Toast.LENGTH_SHORT).show()
 
-
+        //   AnalyticsApplication.instance?.setPlantId("")
 
 
         val navView: BottomNavigationView = binding.navView
@@ -126,14 +162,14 @@ class BottomNavigationActivity : AppCompatActivity() {
         // menu should be considered as top level destinations.
         val appBarConfiguration = AppBarConfiguration(
             setOf(
-                R.id.navigation_home, R.id.navigation_dashboard, R.id.navigation_notifications
+                R.id.navigation_home,  R.id.navigation_notifications, R.id.navigation_dashboard
             )
         )
 
         //initActionBar()
 
         setupActionBarWithNavController(navController, appBarConfiguration)
-        navView.setupWithNavController(navController)
+       navView.setupWithNavController(navController)
 
 
         enable()
@@ -151,9 +187,16 @@ class BottomNavigationActivity : AppCompatActivity() {
 
         locationDao = db.locationDao()
 
+        camerDao = db.cameraDao()
+        bulkDao = db.bulkDao()
+
         storageLocationDao = db.storageLocationDao()
 
         carrierDao = db.carrierDao()
+
+        bulkDao.deleteAllBulkPackages()
+        camerDao.deleteAllBulkPackages()
+
 
 
 
@@ -313,7 +356,6 @@ class BottomNavigationActivity : AppCompatActivity() {
 
         val configRequest = ConfigRequest(ApplicationSharedPref.read(ApplicationSharedPref.COMPANY_ID,"")!!,
             ApplicationSharedPref.read(ApplicationSharedPref.MS_EMAIL,"")!!,
-            ApplicationSharedPref.read(ApplicationSharedPref.MS_PASSWORD,"")!!,
             ApplicationSharedPref.read(ApplicationSharedPref.PLANT_ID,"")!!
         )
 
@@ -335,12 +377,241 @@ class BottomNavigationActivity : AppCompatActivity() {
 
 
 
+        if (intent!= null){
+
+            var navcheck = intent.getStringExtra("navcheck")
+
+            if (navcheck.equals("true")){
+
+                bulkDao.deleteAllBulkPackages()
+
+                binding.navView.selectedItemId = R.id.navigation_dashboard;
+            // change to whichever id should be default
+
+
+            }
+        }
 
 
 
 
 
+
+        // auto scan
+
+
+
+        if (Build.MANUFACTURER.contains("Zebra")){
+
+
+            if(ApplicationSharedPref.readboolean(ApplicationSharedPref.AUTOSCANCHECK, false)!!.equals(true)){
+
+                println("==autoscan1==${ApplicationSharedPref.readboolean(ApplicationSharedPref.AUTOSCANCHECK, false)}")
+
+            }
+
+            else if(ApplicationSharedPref.readboolean(ApplicationSharedPref.AUTOSCANCHECK, true)!!.equals(false)){
+
+
+                println("==autoscan2==${ApplicationSharedPref.readboolean(ApplicationSharedPref.AUTOSCANCHECK, false)}")
+
+//               if (binding.autoscan.isChecked.equals(false))
+//               {
+//                  // ApplicationSharedPref.writeboolean(ApplicationSharedPref.AUTOSCANCHECK, true)
+//                   binding.autoscan.isChecked = true
+//               }
+
+            }
+            else{
+
+
+                ApplicationSharedPref.writeboolean(ApplicationSharedPref.AUTOSCANCHECK, false)
+
+                println("==autoscan3==${ApplicationSharedPref.readboolean(ApplicationSharedPref.AUTOSCANCHECK, false)}")
+
+
+
+            }
+
+
+
+
+
+        }
+
+        else{
+
+            println("==autoscan==${ApplicationSharedPref.readboolean(ApplicationSharedPref.AUTOSCANCHECK, false)}")
+
+
+            if(ApplicationSharedPref.readboolean(ApplicationSharedPref.AUTOSCANCHECK, false)!!.equals(true)){
+
+                println("==autoscan1==${ApplicationSharedPref.readboolean(ApplicationSharedPref.AUTOSCANCHECK, false)}")
+
+            }
+
+            else if(ApplicationSharedPref.readboolean(ApplicationSharedPref.AUTOSCANCHECK, true)!!.equals(false)){
+
+
+                println("==autoscan2==${ApplicationSharedPref.readboolean(ApplicationSharedPref.AUTOSCANCHECK, false)}")
+
+//               if (binding.autoscan.isChecked.equals(false))
+//               {
+//                  // ApplicationSharedPref.writeboolean(ApplicationSharedPref.AUTOSCANCHECK, true)
+//                   binding.autoscan.isChecked = true
+//               }
+
+            }
+            else{
+
+
+                ApplicationSharedPref.writeboolean(ApplicationSharedPref.AUTOSCANCHECK, true)
+
+                println("==autoscan3==${ApplicationSharedPref.readboolean(ApplicationSharedPref.AUTOSCANCHECK, false)}")
+
+
+
+            }
+
+
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        //countrylist()
+
+
+        bottomnav()
         //  initActionBar()
+    }
+
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+
+        displayScanResult(intent)
+
+        // Check if the fragment is an instance of the right fragment
+
+    }
+
+
+    private fun displayScanResult(scanIntent: Intent) {
+        val decodedSource =
+            scanIntent.getStringExtra(resources.getString(R.string.datawedge_intent_key_source))
+         decodedData =
+             scanIntent.getStringExtra(resources.getString(R.string.datawedge_intent_key_data))!!
+        val decodedLabelType =
+            scanIntent.getStringExtra(resources.getString(R.string.datawedge_intent_key_label_type))
+        val scan = "$decodedData [$decodedLabelType]\n\n"
+
+
+
+
+         val mFragmentManager = supportFragmentManager
+         val mFragmentTransaction = mFragmentManager.beginTransaction()
+         val mFragment = CheckFragment()
+
+
+         val mBundle = Bundle()
+         mBundle.putString("decode", decodedData)
+         mFragment.arguments = mBundle
+
+        supportFragmentManager
+            .beginTransaction()
+            .replace(R.id.container, mFragment, "")
+            .commit();
+
+
+
+    }
+
+
+
+
+    fun bottomnav(){
+
+
+        binding.navView.setOnNavigationItemSelectedListener(BottomNavigationView.OnNavigationItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.navigation_home -> {
+
+                   // HomeFragment()
+
+
+                    bulkDao.deleteAllBulkPackages()
+
+                    supportFragmentManager
+                        .beginTransaction()
+                        .replace(R.id.container, HomeFragment(), "")
+                        .commit();
+                    true
+                }
+
+                R.id.navigation_dashboard -> {
+
+
+
+                    supportFragmentManager
+                        .beginTransaction()
+                        .replace(R.id.container, DashboardFragment(), "")
+                        .commit();
+
+                //    DashboardFragment()
+
+                    true
+                }
+
+                R.id.navigation_notifications -> {
+
+                    bulkDao.deleteAllBulkPackages()
+
+                    supportFragmentManager
+                        .beginTransaction()
+                        .replace(R.id.container, CheckFragment(), "")
+                        .commit();
+                   // CheckFragment()
+                    true
+                }
+
+
+
+                else ->
+                    false
+            }
+        })
+
+    }
+
+
+    fun countrylist(){
+
+        val jsonDataString = readJSONDataFromFile()
+
+        println("==jsonlist==$jsonDataString")
+
+       val jsonObject:JSONObject = JSONObject()
+
+        jsonObject.getJSONObject(jsonDataString!!)
+
+        val array:JSONArray = jsonObject.getJSONArray("countries")
+
     }
 
 
@@ -421,14 +692,24 @@ class BottomNavigationActivity : AppCompatActivity() {
 
 
 
-
-
-
-
-
-
-
-
+    @Throws(IOException::class)
+    private fun readJSONDataFromFile(): String? {
+        var inputStream: InputStream? = null
+        val builder = StringBuilder()
+        try {
+            var jsonString: String? = null
+            inputStream = resources.openRawResource(R.raw.countrylist)
+            val bufferedReader = BufferedReader(
+                InputStreamReader(inputStream, "UTF-8")
+            )
+            while (bufferedReader.readLine().also { jsonString = it } != null) {
+                builder.append(jsonString)
+            }
+        } finally {
+            inputStream?.close()
+        }
+        return String(builder)
+    }
 
 
     private fun checkPermission(): Boolean {
@@ -742,7 +1023,7 @@ class BottomNavigationActivity : AppCompatActivity() {
                         val errorMessage = "Location settings are inadequate, and cannot be " +
                                 "fixed here. Fix in Settings."
                         Log.e(ContentValues.TAG, errorMessage)
-                        Toast.makeText(this, errorMessage, Toast.LENGTH_LONG).show()
+                       // Toast.makeText(this, errorMessage, Toast.LENGTH_LONG).show()
                     }
                 }
                 updateLocationUI()
@@ -757,6 +1038,12 @@ class BottomNavigationActivity : AppCompatActivity() {
 
             println("==latitude===$latitude")
             println("==longi===$longitude")
+
+
+            ApplicationSharedPref.write(ApplicationSharedPref.LATTITUDE, latitude.toString())
+            ApplicationSharedPref.write(ApplicationSharedPref.LONGITUDE, longitude.toString())
+
+
             // ToastCustomClass(this, latitude.toString())
 
 

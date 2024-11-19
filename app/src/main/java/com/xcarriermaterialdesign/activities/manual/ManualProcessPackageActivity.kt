@@ -14,19 +14,23 @@ import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.widget.TextView
 import android.widget.TextView.OnEditorActionListener
+import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.databinding.DataBindingUtil
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.room.Room
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.xcarriermaterialdesign.BottomNavigationActivity
 import com.xcarriermaterialdesign.R
 import com.xcarriermaterialdesign.databinding.ActivityManualProcessPackageBinding
+import com.xcarriermaterialdesign.model.TrackingNumbersRequestItem
 import com.xcarriermaterialdesign.process.ProcessPackageActivity
 import com.xcarriermaterialdesign.roomdatabase.ProcessDao
 import com.xcarriermaterialdesign.roomdatabase.ProcessDatabase
 import com.xcarriermaterialdesign.roomdatabase.ProcessPackage
+import com.xcarriermaterialdesign.roomdatabase.TrackingDao
 import com.xcarriermaterialdesign.utils.CourseModal
 import com.xcarriermaterialdesign.utils.DWUtilities
 import com.xcarriermaterialdesign.utils.NetWorkService
@@ -44,6 +48,7 @@ class ManualProcessPackageActivity : AppCompatActivity(), NetworkChangeReceiver.
 
 
     private lateinit var processDao: ProcessDao
+    private lateinit var trackingDao: TrackingDao
 
 
 
@@ -62,6 +67,10 @@ class ManualProcessPackageActivity : AppCompatActivity(), NetworkChangeReceiver.
     private lateinit var binding: ActivityManualProcessPackageBinding
 
     val model: ManualPackageViewModel by viewModels()
+
+
+    lateinit var trackingRequests:List<TrackingNumbersRequestItem>
+    lateinit var  trackingNumbersRequestItem:TrackingNumbersRequestItem
 
 
 
@@ -123,6 +132,8 @@ class ManualProcessPackageActivity : AppCompatActivity(), NetworkChangeReceiver.
 
         processDao = db.processDao()
 
+        trackingDao = db.TrackingDao()
+
         processPackage = processDao.getAllProcessPackages()
 
 
@@ -154,75 +165,95 @@ class ManualProcessPackageActivity : AppCompatActivity(), NetworkChangeReceiver.
                     else->{
 
 
+                        if (!checkDuplicateTrackNo(binding.editText.text.toString())) {
+
+                            trackingNumbersRequestItem = TrackingNumbersRequestItem(binding.editText.text.toString())
 
 
-                        processPackage = processDao.isData(binding.editText.text.toString())
+                            trackingRequests = listOf(trackingNumbersRequestItem)
 
-                        if (processPackage.isEmpty()){
+                            println("==sending==$trackingRequests")
 
 
-                            processDao.insertProcessPackage(ProcessPackage(binding.editText.text.toString(),""))
+
+                            processDao.insertProcessPackage(ProcessPackage(binding.editText.text.toString(),"",1))
+
+                            trackingDao.insertProcessPackage(com.xcarriermaterialdesign.roomdatabase.TrackingNumbersRequestItem(binding.editText.text.toString()))
 
                             savedata()
                         }
 
-                        else{
-
-
-                            for (i in processPackage.indices){
-
-                                if (processPackage[i].trackingNumber == binding.editText.text.toString()){
-
-                                    playNotificationSound()
-
-                                    val dialog = Dialog(this@ManualProcessPackageActivity)
-                                    dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
-                                    dialog.window!!.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-
-                                    dialog.setCancelable(false)
-                                    dialog.setContentView(R.layout.info_layout_new)
-
-                                    val ok = dialog.findViewById<TextView>(R.id.oktext)
-                                    val cancel = dialog.findViewById<TextView>(R.id.cancel)
-
-                                    val info_msg = dialog.findViewById<TextView>(R.id.info_msg)
-
-                                    info_msg.text = "This barcode already scanned.Do you want to continue?"
-
-
-                                    val lp = WindowManager.LayoutParams()
-                                    val window = dialog.window
-                                    lp.copyFrom(window!!.attributes)
-                                    lp.width = WindowManager.LayoutParams.MATCH_PARENT
-                                    lp.height = WindowManager.LayoutParams.WRAP_CONTENT
-                                    window.attributes = lp
-                                    dialog.show()
-
-                                    ok.setOnClickListener {
-
-                                        processDao.insertProcessPackage(ProcessPackage(binding.editText.text.toString(),""))
-
-
-                                        dialog.dismiss()
-
-                                        savedata()
-
-                                    }
-
-                                    cancel.setOnClickListener {
-
-                                        dialog.dismiss()
-                                    }
 
 
 
-                                }
 
-                            }
+                            /* processPackage = processDao.isData(binding.editText.text.toString())
+
+                             if (processPackage.isEmpty()){
+
+
+                                 processDao.insertProcessPackage(ProcessPackage(binding.editText.text.toString(),"",1))
+
+                                 savedata()
+                             }
+
+                             else{
+
+
+                                 for (i in processPackage.indices){
+
+                                     if (processPackage[i].trackingNumber == binding.editText.text.toString()){
+
+                                         playNotificationSound()
+
+                                         val dialog = Dialog(this@ManualProcessPackageActivity)
+                                         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+                                         dialog.window!!.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+
+                                         dialog.setCancelable(false)
+                                         dialog.setContentView(R.layout.info_layout_new)
+
+                                         val ok = dialog.findViewById<TextView>(R.id.oktext)
+                                         val cancel = dialog.findViewById<TextView>(R.id.cancel)
+
+                                         val info_msg = dialog.findViewById<TextView>(R.id.info_msg)
+
+                                         info_msg.text = "This barcode already scanned.Do you want to continue?"
+
+
+                                         val lp = WindowManager.LayoutParams()
+                                         val window = dialog.window
+                                         lp.copyFrom(window!!.attributes)
+                                         lp.width = WindowManager.LayoutParams.MATCH_PARENT
+                                         lp.height = WindowManager.LayoutParams.WRAP_CONTENT
+                                         window.attributes = lp
+                                         dialog.show()
+
+                                         ok.setOnClickListener {
+
+                                             processDao.insertProcessPackage(ProcessPackage(binding.editText.text.toString(),"", 1))
+
+
+                                             dialog.dismiss()
+
+                                             savedata()
+
+                                         }
+
+                                         cancel.setOnClickListener {
+
+                                             dialog.dismiss()
+                                         }
 
 
 
-                        }
+                                     }
+
+                                 }
+
+
+
+                             }*/
 
                     }
                 }
@@ -415,14 +446,43 @@ class ManualProcessPackageActivity : AppCompatActivity(), NetworkChangeReceiver.
         val scan = "$decodedData [$decodedLabelType]\n\n"
         //  output.text = scan
        // filledtextfiled?.setText(decodedData)
-        DWUtilities.sendDataWedgeIntentWithExtras(this, ACTION_DATAWEDGE,EXTRA_SCANNERINPUTPLUGIN,"SUSPEND_PLUGIN")
+
+
+       // Toast.makeText(this, decodedData, Toast.LENGTH_SHORT).show()
 
 
         runOnUiThread(java.lang.Runnable {
 
+
             binding.editText.setText(decodedData)
 
-            DWUtilities.sendDataWedgeIntentWithExtras(this, ACTION_DATAWEDGE,EXTRA_SCANNERINPUTPLUGIN,"RESUME_PLUGIN")
+            if (!checkDuplicateTrackNo(binding.editText.text.toString())) {
+
+                trackingNumbersRequestItem = TrackingNumbersRequestItem(binding.editText.text.toString())
+
+
+                trackingRequests = listOf(trackingNumbersRequestItem)
+
+                println("==sending==$trackingRequests")
+
+
+
+                processDao.insertProcessPackage(ProcessPackage(binding.editText.text.toString(),"",1))
+
+                trackingDao.insertProcessPackage(com.xcarriermaterialdesign.roomdatabase.TrackingNumbersRequestItem(binding.editText.text.toString()))
+
+
+
+                savedata()
+            }
+
+
+
+
+
+         /*   binding.editText.setText(decodedData)
+
+            savedata()*/
 
 
         })
@@ -461,36 +521,10 @@ class ManualProcessPackageActivity : AppCompatActivity(), NetworkChangeReceiver.
     }
 
 
-    private fun getdata(){
 
-        val sharedPreferences = getSharedPreferences("shared preferences", MODE_PRIVATE)
-
-        val gson = Gson()
-        val json = sharedPreferences.getString("trackingnumbers", null)
-
-        val type: Type = object : TypeToken<ArrayList<CourseModal?>?>() {}.type
-
-        courseModalArrayList = gson.fromJson(json, type)
-
-        if (courseModalArrayList == null) {
-            // if the array list is empty
-            // creating a new array list.
-            courseModalArrayList = ArrayList()
-        }
-    }
 
     private fun savedata(){
 
-
-        val sharedPreferences = getSharedPreferences("shared preferences", MODE_PRIVATE)
-        val editor = sharedPreferences.edit()
-
-        val gson = Gson()
-        val json = gson.toJson(courseModalArrayList)
-
-        editor.putString("trackingnumbers", json)
-
-        editor.apply()
 
         val intent = Intent(this, ProcessPackageActivity::class.java)
         startActivity(intent)
@@ -547,6 +581,100 @@ class ManualProcessPackageActivity : AppCompatActivity(), NetworkChangeReceiver.
 
 
         }
+    }
+
+
+    private fun checkDuplicateTrackNo(barcode : String) : Boolean
+    {
+
+        processPackage = processDao.getAllProcessPackages()
+
+        for (item in processPackage.indices)
+        {
+            var bar = processPackage[item]
+
+            if (bar.trackingNumber == barcode)
+            {
+
+
+                playNotificationSound()
+
+
+                val dialog = Dialog(this@ManualProcessPackageActivity)
+                dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+                dialog.window!!.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+
+                dialog.setCancelable(false)
+                dialog.setContentView(R.layout.info_layout_new)
+
+                val ok = dialog.findViewById<TextView>(R.id.oktext)
+                val cancel = dialog.findViewById<TextView>(R.id.cancel)
+
+                val info_msg = dialog.findViewById<TextView>(R.id.info_msg)
+
+                info_msg.text = "This barcode already scanned.Do you want to continue?"
+
+
+                val lp = WindowManager.LayoutParams()
+                val window = dialog.window
+                lp.copyFrom(window!!.attributes)
+                lp.width = WindowManager.LayoutParams.MATCH_PARENT
+                lp.height = WindowManager.LayoutParams.WRAP_CONTENT
+                window.attributes = lp
+                dialog.show()
+
+                ok.setOnClickListener {
+
+                    //
+
+
+                    bar.count = bar.count+1
+
+                    //  processPackage.removeAt(item)
+
+                    processDao.updateProcessPackageCount(bar.id.toString(), bar.count)
+
+                   // trackingDao.updateProcessPackages(bar.id.toString(),bar.trackingNumber)
+
+                    trackingNumbersRequestItem = TrackingNumbersRequestItem(binding.editText.text.toString())
+
+
+                    trackingRequests = listOf(trackingNumbersRequestItem)
+                    println("==sending==$trackingRequests")
+
+
+                    savedata()
+                    dialog.dismiss()
+
+
+                }
+
+                cancel.setOnClickListener {
+
+                    dialog.dismiss()
+                }
+
+
+
+
+
+
+
+
+
+
+
+
+
+                return true
+
+
+            }
+
+
+        }
+
+        return false
     }
 
     companion object {

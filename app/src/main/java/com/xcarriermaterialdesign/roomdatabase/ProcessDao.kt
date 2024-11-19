@@ -14,8 +14,15 @@ interface ProcessDao{
     @Query("SELECT * FROM ProcessPackage_table")
     fun getAllProcessPackages(): List<ProcessPackage>
 
+
+
+
+
+
+
+
     @Query("SELECT * FROM ProcessPackage_table WHERE trackingNumber = :trackingNumber")
-    fun isDataExist(trackingNumber: String?): Int
+    fun isDataExist(trackingNumber: String?): Boolean
 
     @Query("SELECT * FROM ProcessPackage_table WHERE trackingNumber = :trackingNumber")
     fun isData(trackingNumber: String?): List<ProcessPackage>
@@ -31,6 +38,9 @@ interface ProcessDao{
     fun updateProcessPackageCarrier(id: String?,carriername: String?)
 
 
+    @Query("UPDATE ProcessPackage_table SET count = :count WHERE id = :id")
+    fun updateProcessPackageCount(id: String?,count: Int?)
+
 
 
 
@@ -42,6 +52,12 @@ interface ProcessDao{
 
     @Delete
     suspend fun deleteProcessPackage(processPackage: ProcessPackage)
+
+
+    // get values from specific column
+
+    @Query("SELECT trackingNumber FROM ProcessPackage_table")
+    fun getColumnValues(): List<String?>?
 
 
 }

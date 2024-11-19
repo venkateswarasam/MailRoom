@@ -1,5 +1,6 @@
 package com.xcarriermaterialdesign.activities.dashboard
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.os.Handler
 import android.os.Looper
@@ -15,16 +16,20 @@ import com.xcarriermaterialdesign.api.ApiUtilities
 import com.xcarriermaterialdesign.model.ConfigRequest
 import com.xcarriermaterialdesign.model.ConfigResponse
 import com.xcarriermaterialdesign.model.ForgotResponse
+import com.xcarriermaterialdesign.model.GetProfileRequest
+import com.xcarriermaterialdesign.model.GetProfileResponse
 import com.xcarriermaterialdesign.utils.ApplicationSharedPref
 import com.xcarriermaterialdesign.utils.LoadingView
 import com.xcarriermaterialdesign.utils.NetworkConnection
 import com.xcarriermaterialdesign.utils.ServiceDialog
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 
 class DashboardViewModel : ViewModel() {
 
+    @SuppressLint("StaticFieldLeak")
     lateinit var activity: Activity
 
 
@@ -32,6 +37,7 @@ class DashboardViewModel : ViewModel() {
 
     var authenticateResponse =  MutableLiveData<Authenticate_Response>()
 
+    var getprofileResponse =  MutableLiveData<GetProfileResponse>()
 
 
     fun config(activity: Activity) {
@@ -53,16 +59,16 @@ class DashboardViewModel : ViewModel() {
 
 
 
-        LoadingView.displayLoadingWithText(activity,"Please wait...",false)
+      //  LoadingView.displayLoadingWithText(activity,"Please wait...",false)
 
-        var repsonse = ApiUtilities.getInstance()?.create(ApiInterface::class.java)
+        val response = ApiUtilities.getInstance().create(ApiInterface::class.java)
 
         GlobalScope.launch {
 
             try {
 
 
-                var result: ConfigResponse? = repsonse!!.configuration(configRequest,"Bearer"+ApplicationSharedPref.read(ApplicationSharedPref.TOKEN,""))
+                var result: ConfigResponse? = response.configuration(configRequest,"Bearer"+ApplicationSharedPref.read(ApplicationSharedPref.TOKEN,""))
                 configResponse?.postValue(result!!)
 
             }
@@ -101,6 +107,7 @@ class DashboardViewModel : ViewModel() {
 
 
 
+    @OptIn(DelicateCoroutinesApi::class)
     fun refresh(refreshRequest: RefreshRequest){
 
 
@@ -118,7 +125,7 @@ class DashboardViewModel : ViewModel() {
 
         LoadingView.displayLoadingWithText(activity,"Please wait...",false)
 
-        var repsonse = ApiUtilities.getInstance().create(ApiInterface::class.java)
+        val repsonse = ApiUtilities.getInstance().create(ApiInterface::class.java)
 
         GlobalScope.launch {
 
@@ -126,7 +133,7 @@ class DashboardViewModel : ViewModel() {
 
 
                 var result: Authenticate_Response? = repsonse.refreshtoken(refreshRequest,"APIKey"+" suchi.123")
-                authenticateResponse?.postValue(result!!)
+                authenticateResponse.postValue(result!!)
 
 
 
@@ -195,6 +202,10 @@ class DashboardViewModel : ViewModel() {
         }
 
     }
+
+
+
+
 
 
 
